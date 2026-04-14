@@ -1,0 +1,3 @@
+[submodule "uwp/lib/uwp-dep"]
+	path = uwp/lib/uwp-dep
+	url = https://github.com/worleydl/uwp-dep

@@ -206,6 +206,9 @@ namespace OpenRA
 			else
 				userSupportPath = modernUserSupportPath;
 
+			// uwp: Force everything to external
+			modernUserSupportPath = legacyUserSupportPath = systemSupportPath = "E:/cnc/";
+
 			supportDirInitialized = true;
 		}
 

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "uwp": {
+      "commandName": "MsixPackage",
+      "remoteDebugEnabled": true,
+      "remoteDebugMachine": "XBOX",
+      "authenticationMode": "Universal"
+    }
+  }
+}

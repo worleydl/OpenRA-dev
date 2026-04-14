@@ -148,9 +148,16 @@ namespace OpenRA.Platforms.Default
 				// Prefer standard GL over GLES provided by the native driver
 				var testProfiles = new List<GLProfile> { GLProfile.ANGLE, GLProfile.Modern, GLProfile.Embedded };
 				var errorLog = new List<string>();
+#if false
 				supportedProfiles = testProfiles
 					.Where(profile => CanCreateGLWindow(profile, errorLog))
 					.ToArray();
+#else
+				// uwp: force modern, don't check on window creation because it blows up
+				supportedProfiles = testProfiles
+									   .Where(profile => profile == GLProfile.Modern)
+									   .ToArray();
+#endif
 
 				if (supportedProfiles.Length == 0)
 				{

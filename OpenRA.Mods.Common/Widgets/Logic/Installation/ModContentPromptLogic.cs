@@ -84,6 +84,9 @@ namespace OpenRA.Mods.Common.Widgets.Logic
 			};
 
 			Game.RunAfterTick(Ui.ResetTooltips);
+
+			// uwp: force quick install during debug
+			quickButton.OnClick();
 		}
 
 		void CheckRequiredContentInstalled()

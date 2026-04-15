@@ -48,4 +48,19 @@
     </None>
   </ItemGroup>
 
+  <Target Name="FixSDL2Conflict" AfterTargets="GetPackagingOutputs" BeforeTargets="_ComputeAppxPackagePayload">
+    <ItemGroup>
+      <PackagingOutputs Remove="@(PackagingOutputs)"
+                        Condition="'%(PackagingOutputs.TargetPath)' == 'SDL2.dll' AND $([System.String]::Copy('%(PackagingOutputs.FullPath)').Contains('openra-sdl2-cs'))" />
+
+      <Content Remove="@(Content)"
+               Condition="'%(FileName)' == 'SDL2' AND $([System.String]::Copy('%(FullPath)').Contains('openra-sdl2-cs'))" />
+
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                              Condition="'%(FileName)' == 'SDL2' AND $([System.String]::Copy('%(FullPath)').Contains('openra-sdl2-cs'))" />
+    </ItemGroup>
+
+    <Message Importance="high" Text="Removed NuGet SDL2.dll to allow UWP specific version." />
+  </Target>
+
 </Project>

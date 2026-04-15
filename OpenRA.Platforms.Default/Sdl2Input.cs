@@ -9,11 +9,11 @@
  */
 #endregion
 
+using SDL2;
 using System;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
-using SDL2;
-
 using static SDL2.SDL.SDL_GameControllerAxis;
 using static SDL2.SDL.SDL_GameControllerButton;
 
@@ -244,6 +244,23 @@ namespace OpenRA.Platforms.Default
 								inputHandler.OnMouseInput(new MouseInput(
 									MouseInputEvent.Up, button, pos, int2.Zero, mods,
 									MultiTapDetection.InfoFromMouse(e.button.button)));
+						}
+						// Start press = escape
+						else if (e.cbutton.button == (byte) SDL_CONTROLLER_BUTTON_START
+							&& e.type == SDL.SDL_EventType.SDL_CONTROLLERBUTTONDOWN)
+						{
+							var keyEvent = new KeyInput
+							{
+								Event = e.type == SDL.SDL_EventType.SDL_CONTROLLERBUTTONDOWN ?
+									KeyInputEvent.Down : KeyInputEvent.Up,
+								Key = Keycode.ESCAPE,
+								Modifiers = mods,
+								UnicodeChar = (char)e.key.keysym.sym,
+								MultiTapCount = 0,
+								IsRepeat = false
+							};
+
+							inputHandler.OnKeyInput(keyEvent);
 						}
 
 

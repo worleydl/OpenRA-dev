@@ -145,20 +145,19 @@ namespace OpenRA.Support
 
 		protected override Assembly Load(AssemblyName assemblyName)
 		{
-			// If default context is preferred, check first for types in the default context unless the dependency has been declared as private
-			try
-			{
-				var defaultAssembly = Default.LoadFromAssemblyName(assemblyName);
-				if (defaultAssembly != null)
-					return null;
-			}
-			catch
-			{
-				// Swallow errors in loading from the default context
-			}
+			// Check if already loaded in Default without loading it again
+			var defaultAssembly = AppDomain.CurrentDomain
+				.GetAssemblies()
+				.FirstOrDefault(a => a.GetName().Name == assemblyName.Name);
 
-			if (managedAssemblies.TryGetValue(assemblyName.Name, out var library) && SearchForLibrary(library, out var path))
+			if (defaultAssembly != null)
+				return defaultAssembly;
+
+			if (managedAssemblies.TryGetValue(assemblyName.Name, out var library)
+				&& SearchForLibrary(library, out var path))
+			{
 				return LoadFromAssemblyPath(path);
+			}
 
 			return null;
 		}

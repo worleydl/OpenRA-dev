@@ -22,13 +22,16 @@ namespace OpenRA.Platforms.Default
 	sealed class Sdl2Input
 	{
 		// virtual mouse state tracking
-		const int VIRTUAL_DEADZONE = 2000;
+		const int VIRTUAL_DEADZONE = 1250;
 		const int VIRTUAL_MOUSE_MAX_SPEED = 33;
 
 		static int vm_dx = 0; // deltas
 		static int vm_dy = 0;
 		static int vm_px = 0; // position
 		static int vm_py = 0;
+
+		static float vmLastAxisX = 0;
+		static float vmLastAxisY = 0;
 
 		MouseButton lastButtonBits = MouseButton.None;
 
@@ -183,30 +186,29 @@ namespace OpenRA.Platforms.Default
 						if (e.caxis.axis == (byte) SDL_CONTROLLER_AXIS_LEFTX
 							|| e.caxis.axis == (byte) SDL_CONTROLLER_AXIS_LEFTY)
 						{
-							int rawValue = e.caxis.axisValue;
-							int absValue = Math.Abs((int)rawValue);
-							float speed = 0;
+							float rawX = (e.caxis.axis == (byte)SDL_CONTROLLER_AXIS_LEFTX) ? e.caxis.axisValue : vmLastAxisX;
+							float rawY = (e.caxis.axis == (byte)SDL_CONTROLLER_AXIS_LEFTY) ? e.caxis.axisValue : vmLastAxisY;
 
-							if (absValue > VIRTUAL_DEADZONE)
+							vmLastAxisX = rawX;
+							vmLastAxisY = rawY;
+
+							float magnitude = (float)Math.Sqrt((double)rawX * rawX + (double)rawY * rawY);
+
+							if (magnitude > VIRTUAL_DEADZONE)
 							{
-								// We subtract the deadzone so that the movement starts smoothly at 0 right after the deadzone
-								float normalized = (float)(absValue - VIRTUAL_DEADZONE) / (32767 - VIRTUAL_DEADZONE);
+								float normalizedMag = Math.Min(1.0f, (magnitude - VIRTUAL_DEADZONE) / (32767 - VIRTUAL_DEADZONE));
 
-								normalized = Math.Clamp(normalized, 0, 1);
+								float curvedMag = (float)Math.Pow(normalizedMag, 3.0);
 
-								// adjust the pow for different feels, 3 is for precision
-								float curved = (float)Math.Pow(normalized, 3.0);
+								float scale = (curvedMag * VIRTUAL_MOUSE_MAX_SPEED) / magnitude;
 
-								speed = curved * VIRTUAL_MOUSE_MAX_SPEED;
+								vm_dx = (int)(rawX * scale);
+								vm_dy = (int)(rawY * scale);
 							}
-
-							if (e.caxis.axis == (byte)SDL_CONTROLLER_AXIS_LEFTX)
+							else
 							{
-								vm_dx = (int)(rawValue == 0 ? 0 : rawValue > 0 ? speed : -speed);
-							}
-							else if (e.caxis.axis == (byte)SDL_CONTROLLER_AXIS_LEFTY)
-							{
-								vm_dy = (int)(rawValue == 0 ? 0 : rawValue > 0 ? speed : -speed);
+								vm_dx = 0;
+								vm_dy = 0;
 							}
 						}
 

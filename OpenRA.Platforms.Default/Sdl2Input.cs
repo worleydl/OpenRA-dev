@@ -14,11 +14,25 @@ using System.Runtime.InteropServices;
 using System.Text;
 using SDL2;
 
+using static SDL2.SDL.SDL_GameControllerAxis;
+using static SDL2.SDL.SDL_GameControllerButton;
+
 namespace OpenRA.Platforms.Default
 {
 	sealed class Sdl2Input
 	{
+		// virtual mouse state tracking
+		const int VIRTUAL_DEADZONE = 2000;
+		const int VIRTUAL_MOUSE_MAX_SPEED = 33;
+
+		static int vm_dx = 0; // deltas
+		static int vm_dy = 0;
+		static int vm_px = 0; // position
+		static int vm_py = 0;
+
 		MouseButton lastButtonBits = MouseButton.None;
+
+		IntPtr active_gamepad = IntPtr.Zero;
 
 		public static string GetClipboardText() { return SDL.SDL_GetClipboardText(); }
 		public static bool SetClipboardText(string text) { return SDL.SDL_SetClipboardText(text) == 0; }
@@ -28,6 +42,13 @@ namespace OpenRA.Platforms.Default
 			return b == SDL.SDL_BUTTON_LEFT ? MouseButton.Left
 				: b == SDL.SDL_BUTTON_RIGHT ? MouseButton.Right
 				: b == SDL.SDL_BUTTON_MIDDLE ? MouseButton.Middle
+				: 0;
+		}
+
+		static MouseButton MakeButtonFromGamepad(byte b)
+		{
+			return b == (byte)SDL_CONTROLLER_BUTTON_A ? MouseButton.Left
+				: b == (byte)SDL_CONTROLLER_BUTTON_B ? MouseButton.Right
 				: 0;
 		}
 
@@ -61,11 +82,51 @@ namespace OpenRA.Platforms.Default
 			return new int2(x, y);
 		}
 
+		private void SetupGamepad()
+		{
+			if (active_gamepad != IntPtr.Zero)
+			{
+				SDL.SDL_GameControllerClose(active_gamepad);
+			}
+
+			for (int i = 0; i < SDL.SDL_NumJoysticks(); i++)
+			{
+				if (SDL.SDL_IsGameController(i) == SDL.SDL_bool.SDL_TRUE)
+				{
+					active_gamepad = SDL.SDL_GameControllerOpen(i);
+					break;
+				}
+			}
+		}
+
 		public void PumpInput(Sdl2PlatformWindow device, IInputHandler inputHandler, int2? lockedMousePosition)
 		{
 			var mods = MakeModifiers((int)SDL.SDL_GetModState());
 			inputHandler.ModifierKeys(mods);
 			MouseInput? pendingMotion = null;
+
+			// Apply virtual mouse state if deltas are lit
+			if (vm_dx != 0 || vm_dy != 0)
+			{
+				vm_px += vm_dx;
+				vm_py += vm_dy;
+
+				vm_px = Math.Clamp(vm_px, 0, device.EffectiveWindowSize.Width);
+				vm_py = Math.Clamp(vm_py, 0, device.EffectiveWindowSize.Height);
+
+				var mousePos = new int2(vm_px, vm_py);
+				var input = lockedMousePosition ?? mousePos;
+				var pos = new int2(input.X, input.Y);
+				// todo: may need scaling back if the ui elements don't register right at 200%
+				//EventPosition(device, input.X, input.Y);
+
+				var delta = lockedMousePosition == null
+							? new int2(vm_dx, vm_dy) //EventPosition(device, vm_dx, vm_dy)
+							: mousePos - lockedMousePosition.Value;
+
+				pendingMotion = new MouseInput(
+							MouseInputEvent.Move, lastButtonBits, pos, delta, mods, 0);
+			}
 
 			while (SDL.SDL_PollEvent(out var e) != 0)
 			{
@@ -107,6 +168,82 @@ namespace OpenRA.Platforms.Default
 								device.IsSuspended = false;
 								break;
 						}
+
+						break;
+					}
+
+					case SDL.SDL_EventType.SDL_CONTROLLERDEVICEADDED:
+					case SDL.SDL_EventType.SDL_CONTROLLERDEVICEREMOVED:
+						SetupGamepad();
+
+						break;
+
+					case SDL.SDL_EventType.SDL_CONTROLLERAXISMOTION:
+					{
+						if (e.caxis.axis == (byte) SDL_CONTROLLER_AXIS_LEFTX
+							|| e.caxis.axis == (byte) SDL_CONTROLLER_AXIS_LEFTY)
+						{
+							int rawValue = e.caxis.axisValue;
+							int absValue = Math.Abs((int)rawValue);
+							float speed = 0;
+
+							if (absValue > VIRTUAL_DEADZONE)
+							{
+								// We subtract the deadzone so that the movement starts smoothly at 0 right after the deadzone
+								float normalized = (float)(absValue - VIRTUAL_DEADZONE) / (32767 - VIRTUAL_DEADZONE);
+
+								normalized = Math.Clamp(normalized, 0, 1);
+
+								// adjust the pow for different feels, 3 is for precision
+								float curved = (float)Math.Pow(normalized, 3.0);
+
+								speed = curved * VIRTUAL_MOUSE_MAX_SPEED;
+							}
+
+							if (e.caxis.axis == (byte)SDL_CONTROLLER_AXIS_LEFTX)
+							{
+								vm_dx = (int)(rawValue == 0 ? 0 : rawValue > 0 ? speed : -speed);
+							}
+							else if (e.caxis.axis == (byte)SDL_CONTROLLER_AXIS_LEFTY)
+							{
+								vm_dy = (int)(rawValue == 0 ? 0 : rawValue > 0 ? speed : -speed);
+							}
+						}
+
+						break;
+					}
+
+					case SDL.SDL_EventType.SDL_CONTROLLERBUTTONDOWN:
+					case SDL.SDL_EventType.SDL_CONTROLLERBUTTONUP:
+					{
+						if(e.cbutton.button == (byte) SDL_CONTROLLER_BUTTON_A
+							|| e.cbutton.button == (byte) SDL_CONTROLLER_BUTTON_B)
+						{
+							if (pendingMotion != null)
+							{
+								inputHandler.OnMouseInput(pendingMotion.Value);
+								pendingMotion = null;
+							}
+
+							var button = MakeButtonFromGamepad(e.cbutton.button);
+
+							if (e.type == SDL.SDL_EventType.SDL_CONTROLLERBUTTONDOWN)
+								lastButtonBits |= button;
+							else
+								lastButtonBits &= ~button;
+
+							var pos = new int2(vm_px, vm_py); // EventPosition(device, vm_px, vm_py);
+
+							if (e.type == SDL.SDL_EventType.SDL_CONTROLLERBUTTONDOWN)
+								inputHandler.OnMouseInput(new MouseInput(
+									MouseInputEvent.Down, button, pos, int2.Zero, mods,
+									MultiTapDetection.DetectFromMouse(e.button.button, pos)));
+							else
+								inputHandler.OnMouseInput(new MouseInput(
+									MouseInputEvent.Up, button, pos, int2.Zero, mods,
+									MultiTapDetection.InfoFromMouse(e.button.button)));
+						}
+
 
 						break;
 					}
